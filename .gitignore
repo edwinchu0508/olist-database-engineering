@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Local settings; the password never goes here either (see .env.example).
+.env
+# Credentials live in the user's pgpass file, never in the repository.
+pgpass.conf
+.pgpass
+
+# Source data is downloaded separately; data_manifest.json pins the exact files.
+*.csv
+*.zip
+# ...except the query results, which are this project's output.
+!docs/query_results/*.csv
+
+# Scratch output: a local test run record (the published ones are named by date), logs, editors.
+docs/test_runs/latest.md
+*.log
+*.tmp
+.vscode/
+.idea/

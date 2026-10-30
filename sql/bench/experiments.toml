@@ -1,0 +1,152 @@
+# Benchmark experiments, run by `olist-dbe bench` (src/olist_dbe/bench.py).
+#
+# Each experiment runs one business query (sql/queries/) with its declared parameters. The first
+# variant is the reference. Every other variant changes exactly one factor against it: one candidate
+# index (`index`), or one rewrite of the SQL (`sql`, a file in sql/bench/ that takes the same
+# parameters). `indexes` are present for every variant of the experiment: common ground, not a factor.
+# A variant is timed only if its result has the reference variant's fingerprint.
+#
+# `diagnostics` re-run a variant with planner settings changed for one transaction, to explain its
+# plan (for example, what the plan the planner rejected would cost); they are not variants.
+#
+# `hypothesis` was written before the first measurement and is kept as written; what was measured is
+# in docs/benchmarks/report.md and its explanation in docs/benchmarks.md. Index names start with
+# bench_, the prefix the harness owns.
+
+[[experiment]]
+id = "E1"
+query = "q1_customer_order_history"
+question = "Does looking up one person by customer_unique_id need its own index?"
+hypothesis = """
+Only the key indexes exist, so the person's customer rows can only be found by reading all of
+customers (99,441 rows, 1,029 pages). Everything after that already has an index: orders by
+orders_customer_id_key, items and payments by the leading order_id of their primary keys. A B-tree on
+customer_unique_id should make the whole query a chain of index lookups and take it from
+milliseconds to well under one."""
+
+[[experiment.variant]]
+label = "key indexes only"
+
+[[experiment.variant]]
+label = "B-tree on customers (customer_unique_id)"
+index = { name = "bench_customers_unique_id", on = "core.customers (customer_unique_id)" }
+
+[[experiment]]
+id = "E2"
+query = "q2_seller_recent_orders"
+question = "What does the unindexed foreign key order_items.seller_id cost?"
+hypothesis = """
+PostgreSQL does not index the referencing side of a foreign key. The seller has 2,033 of the 112,650
+items, so the reference reads all of order_items (1,502 pages). A B-tree on seller_id finds the 2,033
+directly, but seller_id has no physical correlation (0.003), so the bitmap heap scan still visits many
+of the 1,502 pages, and the orders of those items must still be read for the 30-day filter. Expect a
+real gain, smaller than E1's."""
+
+[[experiment.variant]]
+label = "key indexes only"
+diagnostics = [{ label = "parallel query off", settings = { max_parallel_workers_per_gather = 0 } }]
+
+[[experiment.variant]]
+label = "B-tree on order_items (seller_id)"
+index = { name = "bench_order_items_seller", on = "core.order_items (seller_id)" }
+
+[[experiment]]
+id = "E3"
+query = "q3_open_orders"
+question = "For the 1.7% of orders that are open, is a partial index as fast as a full one, and how much smaller?"
+hypothesis = """
+Both indexes have the same key, order_status; the partial one holds only the open statuses. Either
+lets the planner fetch the 1,729 open orders without reading all of orders, and the plan and time
+should be the same for both. The open orders are spread over the table, so the heap scan still
+touches a large share of its 1,419 pages, and the join to customers is unchanged: expect a modest
+gain. The full index holds 99,441 entries, but B-tree deduplication of the 8 statuses keeps it small;
+the partial one should still be a small fraction of it."""
+
+[[experiment.variant]]
+label = "key indexes only"
+diagnostics = [{ label = "parallel query off", settings = { max_parallel_workers_per_gather = 0 } }]
+
+[[experiment.variant]]
+label = "full B-tree on orders (order_status)"
+index = { name = "bench_orders_status", on = "core.orders (order_status)" }
+
+[[experiment.variant]]
+label = "partial B-tree on orders (order_status), open statuses only"
+index = { name = "bench_orders_status_open", on = "core.orders (order_status) WHERE order_status IN ('created', 'approved', 'invoiced', 'processing', 'shipped')" }
+
+[[experiment]]
+id = "E4"
+query = "q4_daily_orders"
+question = "B-tree or BRIN on order_purchase_timestamp for a one-week window (3,008 orders, 3%)?"
+hypothesis = """
+The rows are not stored in purchase order: the column's physical correlation is -0.001. A BRIN index
+keeps the minimum and maximum per range of 128 pages; with this layout every range spans nearly the
+whole period, so BRIN can exclude nothing and gives no gain (or the planner ignores it). A B-tree
+finds the 3,008 orders exactly, but they are spread over most of the 1,419 pages, so the gain is
+bounded; the BRIN index should be tiny next to the B-tree."""
+
+[[experiment.variant]]
+label = "key indexes only"
+
+[[experiment.variant]]
+label = "B-tree on orders (order_purchase_timestamp)"
+index = { name = "bench_orders_purchase_ts", on = "core.orders (order_purchase_timestamp)" }
+
+[[experiment.variant]]
+label = "BRIN on orders (order_purchase_timestamp)"
+index = { name = "bench_orders_purchase_ts_brin", on = "core.orders USING brin (order_purchase_timestamp)" }
+diagnostics = [{ label = "sequential scans discouraged", settings = { enable_seqscan = "off" } }]
+
+[[experiment]]
+id = "E5"
+query = "q4_daily_orders"
+question = "With a B-tree on the timestamp, what does filtering on the cast date instead of the raw timestamp cost?"
+indexes = [{ name = "bench_orders_purchase_ts", on = "core.orders (order_purchase_timestamp)" }]
+hypothesis = """
+order_purchase_timestamp::date >= :from AND ... < :to returns the same orders, but the condition is
+on an expression, not on the column, so the B-tree cannot serve it (non-sargable) and the planner
+falls back to reading all of orders. It also has no statistics for the expression and must guess the
+row count. Expect the rewrite to lose whatever the B-tree gained in E4."""
+
+[[experiment.variant]]
+label = "range on the raw timestamp (sql/queries)"
+
+[[experiment.variant]]
+label = "range on order_purchase_timestamp::date"
+sql = "q4_daily_orders_cast_to_date.sql"
+
+[[experiment]]
+id = "E6"
+query = "q5_monthly_gmv"
+question = "Does the same B-tree help the monthly report, whose range covers almost every order?"
+hypothesis = """
+The months 2017-01 to 2018-08 hold 99,092 of the 99,441 orders (99.6%). Reading them through an index
+would cost more than reading the table, so the planner should keep the sequential scan and the time
+should not change: the index costs space and write work and buys nothing here."""
+
+[[experiment.variant]]
+label = "key indexes only"
+
+[[experiment.variant]]
+label = "B-tree on orders (order_purchase_timestamp)"
+index = { name = "bench_orders_purchase_ts", on = "core.orders (order_purchase_timestamp)" }
+diagnostics = [{ label = "sequential scans discouraged", settings = { enable_seqscan = "off" } }]
+
+[[experiment]]
+id = "E7"
+query = "q6_cohort_retention"
+question = "Is the cohort month cheaper as min() OVER (PARTITION BY person) than as GROUP BY plus a self-join?"
+hypothesis = """
+The reference computes each person's first month with GROUP BY and joins it back; the delivered CTE is
+referenced twice, so it is materialized once and scanned twice. The window rewrite reads it once but
+must sort all 96,478 delivered orders by customer_unique_id, and with work_mem = 4MB that sort may
+spill to disk. Expect a modest difference in either direction; watch the temp blocks."""
+
+[[experiment.variant]]
+label = "GROUP BY and self-join (sql/queries)"
+diagnostics = [{ label = "work_mem 32MB", settings = { work_mem = "32MB" } }]
+
+[[experiment.variant]]
+label = "min(month) OVER (PARTITION BY customer_unique_id)"
+sql = "q6_cohort_retention_window.sql"
+diagnostics = [{ label = "work_mem 32MB", settings = { work_mem = "32MB" } }]

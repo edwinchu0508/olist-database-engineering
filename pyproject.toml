@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "olist-dbe"
+version = "0.1.0"
+description = "PostgreSQL database engineering on the Olist Brazilian e-commerce dataset"
+requires-python = ">=3.11"
+dependencies = ["psycopg[binary]==3.3.6"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0"]
+
+[project.scripts]
+olist-dbe = "olist_dbe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
