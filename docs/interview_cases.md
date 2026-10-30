@@ -1,7 +1,8 @@
 # Three cases from this project
 
 Each case gives the situation, what was measured, the decision, how it is verified, and what it
-costs. Every number is from this repository: the tests that pin it, or the
+costs. One-minute spoken versions (choice, evidence, cost), with follow-up questions, are in
+[interview_pitch.md](interview_pitch.md) (in Chinese). Every number is from this repository: the tests that pin it, or the
 [benchmark report](benchmarks/report.md).
 
 ## 1. Data quality and modelling: who is the customer?

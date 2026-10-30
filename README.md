@@ -13,10 +13,14 @@ experiments measured one factor at a time, including the ones that did not help.
     reviews.
   - Business queries: 8 definitions, SQL, and saved results.
   - Benchmarks: 7 experiments on 6 of those queries.
-- Next: the transaction and isolation experiments, CI, and larger scale factors (see
+- Planned extensions, not started: CI, a 10× data set, and more isolation experiments (see
   [limitations](#limitations)).
 
-Three worked cases, for a quick read: [docs/interview_cases.md](docs/interview_cases.md).
+For a quick read:
+- [docs/interview_cases.md](docs/interview_cases.md): three worked cases.
+- [docs/demo.md](docs/demo.md): a five-minute demo with commands and rehearsed output (in Chinese).
+- [docs/interview_pitch.md](docs/interview_pitch.md): one-minute versions of the three cases (in
+  Chinese).
 
 ## What is in place
 
@@ -89,7 +93,11 @@ Requires PostgreSQL 17+ (builtin collation) and Python 3.11+.
 
 On a shared server, consider running the tests and the benchmarks on a separate instance instead:
 the suite rebuilds `core` in the test database, the benchmarks create and drop indexes in the main
-one, and both need control over configuration, caches and other load.
+one, and both need control over configuration, caches and other load. On Windows,
+`scripts\lab_cluster.ps1 create` makes such an instance: a throwaway cluster on port 55433 with
+trust authentication on localhost, bootstrapped and loaded in about 45 s. It performs step 2 and
+step 4 up to `load`; step 3 is not needed, because trust authentication uses no password.
+`scripts\lab_cluster.ps1 remove` deletes it.
 
 1. Install the package and configure it: copy `.env.example` to `.env` and set `OLIST_DATA_DIR` (and
    `OLIST_DBE_PG_BIN` if PostgreSQL's `bin` folder is not on PATH).
@@ -165,9 +173,10 @@ sql/queries/     the eight business queries, definition and parameters in each h
 sql/bench/       benchmark experiments (experiments.toml) and the SQL rewrites they compare
 src/olist_dbe/   target verification, loader, DQ runner, queries, benchmark harness, report, CLI
 tests/           pytest suite (runs only against the database marked 'test')
-scripts/         pgpass helper, the independent pandas profile of the source files
+scripts/         lab cluster, pgpass helper, the independent pandas profile of the source files
+scripts/demo/    the SQL the five-minute demo runs (read-only, or rolled back)
 docs/            ERD, design decisions, queries and their results, benchmarks, DQ report,
-                 data assessment, test run records, interview cases
+                 data assessment, test run records, interview cases, demo
 ```
 
 ## Limitations
